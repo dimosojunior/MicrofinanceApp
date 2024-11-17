@@ -1,0 +1,81 @@
+here still i have a problem, i'm using django apiand expo react native, and in django i have a model called 'DukaLako' that stores all posts posted by the users, also i have another model called 'MyUser' which stores all users.
+so here i'm trying to implement push notification, i need this when user posts new content in DukaLako model send notifications to all users to inform them that new post is added.so now the problem is this, when user post new item in DukaLako model the notification comes only for that user who posting new content at that time and other users don't receive any notification, so i don't know where i have mistaked, i need to loop all users in MyUser model that has expo_push_token and send notifications to those users.
+so pass through my codes and modify them to implement such thing now notification is sent to only one user who posting content at that time.
+my views.py codes are;
+
+def send_push_notification(tokens, message):
+    url = "https://exp.host/--/api/v2/push/send"
+    headers = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+    }
+    notifications = [{
+        'to': token,
+        'sound': 'default',
+        'title': 'Mfugaji Smart',
+        'body': message,
+        'data': {'targetScreen': 'Get All Duka Lako Items'}
+    } for token in tokens]
+
+    response = requests.post(url, json=notifications, headers=headers)
+    return response
+
+
+
+#------------------KUMBUSHO LA UATAMIAJI WA MAYAI---------------------
+class AddDukaLakoView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        #SikuZaKukumbushwa = int(request.query_params.get("siku"))
+        user = request.user
+        data = request.data.copy()
+        myemail = "nemoomary3@gmail.com"
+
+        data['profile_image'] = user.profile_image
+        #data['LevelImage'] = user.LevelImage
+        
+        
+        data['TickStatus'] = user.Tick
+        data['expo_push_token'] = user.expo_push_token
+        data['company_name'] = user.company_name
+        data['username'] = user.username
+        data['email'] = user.email
+        data['phone'] = user.phone  # Assuming phone is in a related profile model
+        data['Location'] = user.Location  # Assuming Location is in a related profile model
+        serializer = DukaLakoSerializer(data=data)
+
+        #my_users = MyUser.objects.all()
+
+        if serializer.is_valid():
+            serializer.save()
+
+            # Send push notifications to all users
+            tokens = MyUser.objects.exclude(expo_push_token__isnull=True).values_list('expo_push_token', flat=True)
+            message = f"{user.username} ameweka posti mpya kwenye duka lako ndani ya mfugaji smart!"
+            send_push_notification(tokens, message)
+
+            # Email Sent to Admin
+            subject = "Mfugaji Smart"
+            message = f"Hello Admin, Mtumiaji mwenye jina: {user.username} na mwenye email: {user.email}, simu namba: {user.phone} ameongeza taarifa mpya kwenye sehemu ya Duka Lako. \n \n Hivyo unapaswa kuhakiki taarifa zake kupitia link hapo chini. \n \n https://mfugajismart.net/MfugajiSmart/"
+            from_email = settings.EMAIL_HOST_USER
+            recipient_list = [myemail]
+            send_mail(subject, message, from_email, recipient_list, fail_silently=True)
+
+            #-----------Send email kwa wote
+            # for x in my_users:
+            #     # Send an email to the user
+            #     emailReciever = x.email
+            #     phoneReciever = x.phone
+            #     usernameReciever = x.username
+
+            #     subject = "Mfugaji Smart"
+            #     message = f"Hello {usernameReciever}, Mfugaji Smart inakutaarifu kuwa {user.username} ameweka posti mpya. \n Tembelea programu ya Mfugaji Smart ili kuweza kuona huduma zetu mpya.\n https://play.google.com/store/apps/details?id=ttpc.MS"
+            #     from_email = settings.EMAIL_HOST_USER
+            #     recipient_list = [emailReciever]
+            #     send_mail(subject, message, from_email, recipient_list, fail_silently=True)
+
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
